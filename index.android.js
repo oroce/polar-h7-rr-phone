@@ -3,189 +3,127 @@
  * https://github.com/facebook/react-native
  * @flow
  */
-const debug = require('react-native-debug')('polarh7');
-require('debug').enable('*');
-import { Buffer } from 'buffer';
+if (!__DEV__) {
+ //require('./raven');
+}
+const debugFactory = require('react-native-debug');
+const debug = debugFactory('polarh7');
+debugFactory.enable('*');
+
 import React, { Component } from 'react';
 import {
+  AsyncStorage,
   AppRegistry,
-  //StyleSheet,
+  StyleSheet,
   Text,
   View,
   TouchableHighlight,
-  NativeAppEventEmitter
+  NativeAppEventEmitter,
+  ToolbarAndroid,
+  Navigator,
+  NativeModules
 } from 'react-native';
-import BleManager from 'react-native-ble-manager';
-//import Speech from 'react-native-speech';
-/*export default class PolarH7RR extends Component {
-  render() {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.welcome}>
-          Welcome to React Native!
-        </Text>
-        <Text style={styles.instructions}>
-          To get started, edit index.android.js
-        </Text>
-        <Text style={styles.instructions}>
-          Double tap R on your keyboard to reload,{'\n'}
-          Shake or press menu button for dev menu
-        </Text>
-      </View>
-    );
-  }
-}
+import Record from './src/containers/record';
+import History from './history';
+import styles from './styles';
+import Notification from 'react-native-system-notification';
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5FCFF',
-  },
-  welcome: {
-    fontSize: 20,
-    textAlign: 'center',
-    margin: 10,
-  },
-  instructions: {
-    textAlign: 'center',
-    color: '#333333',
-    marginBottom: 5,
-  },
-});*/
+import {
+  COLOR,
+  ThemeProvider,
+} from 'react-native-material-ui';
+import { Provider } from 'react-redux';
+import store from './src/store';
+import * as actions from './src/actions';
+const UIManager = NativeModules.UIManager;
+
+const uiTheme = {
+    palette: {
+        primaryColor: COLOR.green500,
+    },
+    toolbar: {
+        container: {
+            height: 50,
+        },
+    },
+};
+
+var RouteMapper = function(route, navigationOperations, onComponentRef, props) {
+  _navigator = navigationOperations;
+  console.log('polar route is ', route, props);
+  if (route.name === 'record') {
+    return (
+      <Record navigator={navigationOperations} { ...props } />
+    );
+  } else if (route.name === 'history') {
+      return (
+        <History navigator={navigationOperations} />
+      );
+    // return (
+    //   <View style={{flex: 1}}>
+    //     <ToolbarAndroid
+    //       actions={[]}
+    //       navIcon={require('image!android_back_white')}
+    //       onIconClicked={navigationOperations.pop}
+    //       style={styles.toolbar}
+    //       titleColor="white"
+    //       title={route.movie.title} />
+    //     <MovieScreen
+    //       style={{flex: 1}}
+    //       navigator={navigationOperations}
+    //       movie={route.movie}
+    //     />
+    //   </View>
+    // );
+  }
+};
 
 export default class PolarH7RR extends Component {
-
-    constructor(){
-        super()
-
-        this.state = {
-            ble:null,
-            scanning:false,
-            devices: []
-        }
+  constructor(){
+    super()
+  }
+  componentWillMount() {
+    if (UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
     }
+  }
 
-    componentDidMount() {
-        BleManager.start({showAlert: false});
-        this.handleDiscoverPeripheral = this.handleDiscoverPeripheral.bind(this);
+  componentDidMount() {
+    console.log('polar: componentDidMount', this.worker);
 
-        NativeAppEventEmitter
-            .addListener('BleManagerDiscoverPeripheral', this.handleDiscoverPeripheral );
-        NativeAppEventEmitter
-            .addListener('BleManagerDidUpdateValueForCharacteristic', this.handleCharacteristicNotification)
+    store.dispatch(actions.connectWorker());
+
+  }
+  notifyWorker(action, payload) {
+    console.log('polar notifying worker', action, payload);
+    if (!this.worker) {
+      console.error('polar: no worker attached');
+      return;
     }
-
-    handleScan() {
-      console.log('start scanning');
-      if (this.state.deviceConnected) {
-        return;
-      }
-      BleManager.scan([], 30, true)
-          .then((results) => console.log('Scanning...'));
-    }
-
-    handleCharacteristicNotification(args) {
-      const {
-        peripheral,
-        characteristic,
-        value
-      } = args;
-
-      console.log('we received %s, %s, %s', peripheral, characteristic, value);
-      var val = new Buffer(value, 'hex');
-      const rate = val.readUInt8(1);
-      const n = (val.length - 2) / 2;
-      console.log('polar rate', rate);
-      if (n === 0) {
-        return;
-      }
-      const rr = +(val.readUInt16LE(2).toFixed(4));
-      console.log('polar rr=', rr);
-    }
-
-    toggleScanning(bool){
-        if (bool) {
-            this.setState({scanning:true})
-            this.scanning = setInterval( ()=> this.handleScan(), 3000);
-        } else{
-            this.setState({scanning:false, ble: null})
-            clearInterval(this.scanning);
-        }
-    }
-
-    handleDiscoverPeripheral(data){
-        debug('Got ble data: %j', data);
-        this.setState({
-          devices: this.state.devices.concat(data),
-          ble: data
-        });
-        const { name = ''} = data;
-        if (name.startsWith('Polar H7')) {
-          console.log('connecting to %s', data.id);
-          this.setState({status: 'connecting to polar'})
-          BleManager.connect(data.id)
-            .then(info => {
-              this.setState({status: 'connected to polar'});
-              console.log('polarinfo', info);
-
-              BleManager.startNotification(data.id, '0000180d-0000-1000-8000-00805f9b34fb', '00002a37-0000-1000-8000-00805f9b34fb')
-                .then(() => this.setState({
-                  status: 'we are listening',
-                  deviceConnected: data.id
-                }))
-                .catch(err => console.error(err));
-            })
-            .catch((error) => {
-              // Failure code
-              console.log(error);
-            });
-
-        }
-
-    }
-
-    render() {
-
-        const container = {
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-            backgroundColor: '#F5FCFF',
-        }
-        const devices = this.state.devices;
-        const bleList = this.state.ble
-            ? <Text> Device found: {this.state.ble.name} </Text>
-            : <Text>no devices nearby</Text>
-        const status = (
-          <Text>{ this.state.status }</Text>
-        );
-        let listEl;
-        if (devices.length === 0) {
-          listEl = (
-            <Text>No device yet</Text>
-          );
-        } else {
-          listEl = devices
-            .map((device, i) => {
-              return (
-                <Text key={ i }>{device.name}</Text>
-              );
-            });
-        }
-        return (
-            <View style={container}>
-                <TouchableHighlight style={{padding:20, backgroundColor:'#ccc'}} onPress={() => this.toggleScanning(!this.state.scanning) }>
-                    <Text>Scan Bluetooth ({this.state.scanning ? 'on' : 'off'})</Text>
-                </TouchableHighlight>
-
-                {bleList}
-                { status }
-                { listEl }
-            </View>
-        );
-    }
+    const msg = {
+      action,
+      payload
+    };
+    this.worker.postMessage(JSON.stringify(msg));
+  }
+  render() {
+    var initialRoute = {
+      name: 'record',
+      onStart: () => this.notifyWorker('start')
+    };
+    return (
+      <Provider store={ store }>
+        <ThemeProvider uiTheme={uiTheme}>
+          <Navigator
+            style={styles.container}
+            initialRoute={initialRoute}
+            configureScene={() => Navigator.SceneConfigs.FadeAndroid}
+            renderScene={ (route, navigationOperations, onComponentRef) => RouteMapper(route, navigationOperations, onComponentRef, this.props)}
+          />
+        </ThemeProvider>
+      </Provider>
+    );
+  }
 }
 
 AppRegistry.registerComponent('PolarH7RR', () => PolarH7RR);

@@ -13,7 +13,11 @@ import java.util.Arrays;
 import java.util.List;
 
 import it.innove.BleManagerPackage;
-
+import cl.json.RNSharePackage;
+import com.rnfs.RNFSPackage;
+import org.pgsqlite.SQLitePluginPackage;
+import io.neson.react.notification.NotificationPackage;
+import co.apptailor.Worker.WorkerPackage;
 public class MainApplication extends Application implements ReactApplication {
 
   private final ReactNativeHost mReactNativeHost = new ReactNativeHost(this) {
@@ -26,7 +30,16 @@ public class MainApplication extends Application implements ReactApplication {
     protected List<ReactPackage> getPackages() {
       return Arrays.<ReactPackage>asList(
           new MainReactPackage(),
-          new BleManagerPackage()
+          new BleManagerPackage(),
+          new RNSharePackage(),
+          new RNFSPackage(),
+          // new SQLitePluginPackage(),
+          // new NotificationPackage(),
+          new WorkerPackage(
+            new BleManagerPackage(),
+            new NotificationPackage(),
+            new RNFSPackage()
+          )
       );
     }
   };
